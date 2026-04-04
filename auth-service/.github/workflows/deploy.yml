@@ -1,0 +1,27 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Add your deployment script here
+      - name: Mock deployment
+        run: echo "Deploying to production..."
+
+      - name: Notify Jira of Deployment
+        uses: atlassian/gajira-deploy@v2
+        with:
+          site: ${{ secrets.JIRA_SITE }}
+          email: ${{ secrets.JIRA_EMAIL }}
+          apiToken: ${{ secrets.JIRA_API_TOKEN }}
+          environment: production
+          deploymentSequenceNumber: ${{ github.run_number }}
+          issueKeys: CORE-7  # 🔁 Replace with dynamic logic later

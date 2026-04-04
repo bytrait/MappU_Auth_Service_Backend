@@ -1,0 +1,112 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+//
+// =======================
+// USER MODEL
+// =======================
+//
+model User {
+  id        String   @id @default(uuid())
+  fullName  String
+  email     String   @unique
+  contact   String
+  role      UserRole
+  verified  Boolean  @default(false)
+  welcomeShown Boolean @default(false)
+
+  // -----------------------
+  // Counsellor → Student
+  // -----------------------
+  counsellorId String?
+  counsellor   User?   @relation("CounsellorStudents", fields: [counsellorId], references: [id])
+  students     User[]  @relation("CounsellorStudents")
+
+  // -----------------------
+  // Counsellor → School
+  // -----------------------
+  schools     School[] @relation("CounsellorSchools")
+
+  // -----------------------
+  // School → Student
+  // -----------------------
+  schoolId String?
+  school   School? @relation("SchoolStudents", fields: [schoolId], references: [id])
+
+  // -----------------------
+  // Institution → Student (future)
+  // -----------------------
+  institutionId String?
+  institution   User?   @relation("InstitutionStudents", fields: [institutionId], references: [id])
+  institutionStudents User[] @relation("InstitutionStudents")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//
+// =======================
+// SCHOOL MODEL
+// =======================
+//
+model School {
+  id           String   @id @default(uuid())
+  name         String
+  counsellorId String
+
+  // counsellor who owns the school
+  counsellor   User     @relation("CounsellorSchools", fields: [counsellorId], references: [id])
+
+  // students under this school
+  students     User[]   @relation("SchoolStudents")
+
+  isActive     Boolean  @default(true)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+//
+// =======================
+// USER ROLE
+// =======================
+//
+enum UserRole {
+  ADMIN
+  COUNSELLOR
+  STUDENT
+  INSTITUTION
+}
+
+//
+// =======================
+// REFERENCE CODES
+// =======================
+//
+model ReferenceCode {
+  id        String   @id @default(uuid())
+  code      String   @unique   // e.g. ABC123
+  type      ReferenceType
+  targetId  String            // COUNSELLOR → User.id | SCHOOL → School.id | INSTITUTION → User.id
+  isActive  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+}
+
+//
+// =======================
+// REFERENCE CODE TYPES
+// =======================
+//
+enum ReferenceType {
+  COUNSELLOR
+  SCHOOL
+  INSTITUTION
+}

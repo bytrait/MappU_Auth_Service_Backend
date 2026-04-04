@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+    command: ["redis-server", "--appendonly", "yes"]
+
+  auth-service:
+    build:
+      context: .
+      args:
+        FRONTEND_ENV: |
+          VITE_API_URL=http://164.92.115.205:8000/api/v2
+
+    ports:
+      - "8000:8000"
+
+    env_file:
+      - /home/bytrait/envs/auth-service/.env
+
+    restart: always
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    command: sh -c "npx prisma migrate deploy && node index.js"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

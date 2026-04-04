@@ -1,0 +1,66 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Sanket0506
+      POSTGRES_DB: authdb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    restart: always
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+ 
+
+  auth-service:
+    build:
+      context: .
+    container_name: auth-service
+    env_file:
+      - ./auth-service/.env.development
+    depends_on:
+      - postgres
+    ports:
+      - "3000:3000"
+    # volumes:
+    #   - ./auth-service:/app
+    command: sh -c "npx prisma migrate deploy && node index.js"
+    # command: sh -c "node index.js"
+
+  redis:
+    image: redis:7
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+    command: ["redis-server", "--appendonly", "yes"]
+  
+
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #   container_name: frontend
+  #   depends_on:
+  #     - auth-service
+  #   ports:
+  #     - "5173:80"
+  #   volumes:
+  #     - ./frontend:/app
+
+volumes:
+  pgdata:

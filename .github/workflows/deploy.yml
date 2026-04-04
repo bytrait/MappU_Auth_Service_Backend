@@ -1,0 +1,29 @@
+name: Deploy to Production (Self-Hosted)
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: self-hosted 
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract Jira issue keys from latest commit
+        id: extract_jira_keys
+        run: |
+          echo "Scanning latest commit for Jira issue keys..."
+          keys=$(git log -1 --pretty=format:"%s" | grep -oE '[A-Z]+-[0-9]+' | uniq | paste -sd "," -)
+          echo "🪄 Found: $keys"
+          echo "issueKeys=$keys" >> $GITHUB_OUTPUT
+
+      # Replace with your real deployment logic here
+      - name: 🐳 Deploy to DigitalOcean (Docker Compose)
+        run: |
+          echo "Starting production deployment..."
+          docker compose -f docker-compose.prod.yml down
+          docker compose -f docker-compose.prod.yml up --build -d
+          echo "Deployment complete!"
