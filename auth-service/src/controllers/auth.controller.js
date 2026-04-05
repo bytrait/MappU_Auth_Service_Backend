@@ -28,7 +28,7 @@ const prodCookieConfig = {
   ...baseCookieConfig,
   secure: true,
   sameSite: 'None',
-  domain: '.bytrait.com'
+  domain: '.mappmyuniversity.com'
 };
 
 // Development → 127.0.0.1 cross-port sharing
