@@ -1,85 +1,156 @@
-const redis = require('../config/redis.config');
+const { redis: redisClient } = require('../config/redis.config');
 const { logger } = require('../config/logger');
 const crypto = require('crypto');
 
-const OTP_EXPIRY = 300;
+const OTP_EXPIRY = 300; // 5 min
 const EMAIL_VERIFIED_EXPIRY = 300;
 
-const generateOtp = () => {
-    return crypto.randomInt(100000, 999999).toString();
-};
+// 🔒 Namespaced keys
+const getOtpKey = (email) => `auth:otp:email:${email}`;
+const getVerifiedKey = (email) => `auth:verified:email:${email}`;
+const getRateLimitKey = (email) => `auth:otp:rate:${email}`;
 
-// ✅ wrapped with try/catch
+// 🔢 Generate secure OTP
+const generateOtp = () => crypto.randomInt(100000, 999999).toString();
+
+
+// -------------------------
+// OTP SET (WITH RATE LIMIT)
+// -------------------------
 const setOtp = async (email, otp) => {
-    const key = `otp:${email}`;
+    const otpKey = getOtpKey(email);
+    const rateKey = getRateLimitKey(email);
+
     try {
-        await redis.set(key, otp, 'EX', OTP_EXPIRY);
+        // 🚫 Rate limit: max 3 OTP per minute
+        const attempts = await redisClient.incr(rateKey);
+
+        if (attempts === 1) {
+            await redisClient.expire(rateKey, 60); // 1 min window
+        }
+
+        if (attempts > 3) {
+            logger.warn(`🚫 OTP rate limit exceeded for ${email}`);
+            throw new Error('Too many OTP requests. Try again later.');
+        }
+
+        // ✅ Store OTP with expiry
+        await redisClient.set(otpKey, otp, 'EX', OTP_EXPIRY);
+
         logger.info(`✅ OTP set for ${email}`);
     } catch (err) {
-        logger.error('❌ setOtp failed:', err);
-        throw new Error('OTP service unavailable');
+        logger.error('❌ setOtp failed:', {
+            message: err.message,
+            stack: err.stack,
+        });
+        throw err; // 🔥 DO NOT wrap blindly
     }
 };
 
-// ✅ safe fallback
+
+// -------------------------
+// OTP GET
+// -------------------------
 const getOtp = async (email) => {
-    const key = `otp:${email}`;
+    const key = getOtpKey(email);
+
     try {
-        return await redis.get(key);
+        return await redisClient.get(key);
     } catch (err) {
-        logger.error('❌ getOtp failed:', err);
+        logger.error('❌ getOtp failed:', err.message);
         return null;
     }
 };
 
-// ✅ safe delete (no crash)
+
+// -------------------------
+// OTP DELETE
+// -------------------------
 const deleteOtp = async (email) => {
-    const key = `otp:${email}`;
+    const key = getOtpKey(email);
+
     try {
-        await redis.del(key);
+        await redisClient.del(key);
     } catch (err) {
-        logger.error('❌ deleteOtp failed:', err);
+        logger.error('❌ deleteOtp failed:', err.message);
     }
 };
 
-// ✅ fix: store string instead of boolean + error handling
+
+// -------------------------
+// EMAIL VERIFIED FLAG
+// -------------------------
 const setEmailVerified = async (email) => {
-    const key = `email_verified:${email}`;
+    const key = getVerifiedKey(email);
+
     try {
-        await redis.set(key, 'true', 'EX', EMAIL_VERIFIED_EXPIRY);
+        await redisClient.set(key, 'true', 'EX', EMAIL_VERIFIED_EXPIRY);
         logger.info(`✅ Email verified flag set for ${email}`);
     } catch (err) {
-        logger.error('❌ setEmailVerified failed:', err);
+        logger.error('❌ setEmailVerified failed:', err.message);
     }
 };
 
-// ✅ safe read
 const isEmailVerified = async (email) => {
-    const key = `email_verified:${email}`;
+    const key = getVerifiedKey(email);
+
     try {
-        const result = await redis.get(key);
+        const result = await redisClient.get(key);
         return result === 'true';
     } catch (err) {
-        logger.error('❌ isEmailVerified failed:', err);
+        logger.error('❌ isEmailVerified failed:', err.message);
         return false;
     }
 };
 
-// ✅ safe delete
 const deleteEmailVerifiedFlag = async (email) => {
-    const key = `email_verified:${email}`;
+    const key = getVerifiedKey(email);
+
     try {
-        await redis.del(key);
+        await redisClient.del(key);
     } catch (err) {
-        logger.error('❌ deleteEmailVerifiedFlag failed:', err);
+        logger.error('❌ deleteEmailVerifiedFlag failed:', err.message);
     }
 };
+
+
+// -------------------------
+// OTP VERIFY (NEW - IMPORTANT)
+// -------------------------
+const verifyOtp = async (email, inputOtp) => {
+    const key = getOtpKey(email);
+
+    try {
+        const storedOtp = await redisClient.get(key);
+
+        if (!storedOtp) {
+            return { success: false, message: 'OTP expired or not found' };
+        }
+
+        if (storedOtp !== inputOtp) {
+            return { success: false, message: 'Invalid OTP' };
+        }
+
+        // ✅ Delete OTP immediately after success
+        await redisClient.del(key);
+
+        // ✅ Mark email verified
+        await setEmailVerified(email);
+
+        return { success: true };
+    } catch (err) {
+        logger.error('❌ verifyOtp failed:', err.message);
+        return { success: false, message: 'Verification failed' };
+    }
+};
+
 
 module.exports = {
     generateOtp,
     setOtp,
     getOtp,
     deleteOtp,
+    verifyOtp,
     setEmailVerified,
     isEmailVerified,
     deleteEmailVerifiedFlag
