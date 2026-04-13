@@ -31,7 +31,7 @@ const redis = new Redis(process.env.REDIS_URL, {
   reconnectOnError(err) {
     if (err.message.includes("READONLY")) {
       logger.warn("⚠️ Redis READONLY detected. Reconnecting...");
-      return true;
+      return 2;
     }
     return false;
   },

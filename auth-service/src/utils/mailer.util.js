@@ -3,9 +3,9 @@ const { logger } = require('../config/logger');
 
 const sendOtpEmail = async (email, otp) => {
   const mailOptions = {
-    from: `"ByTrait" <${process.env.SMTP_EMAIL}>`,
+    from: `"MappU" <${process.env.SMTP_EMAIL}>`,
     to: email,
-    subject: 'Your OTP for ByTrait Login',
+    subject: 'Your OTP for Mapp my University Login',
     html: `
       <div style="font-family: sans-serif;">
         <h2>OTP Verification</h2>
