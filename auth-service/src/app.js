@@ -7,7 +7,7 @@ const cookieParser = require('cookie-parser');
 const authRoutes = require('./routes/auth.routes');
 const counsellorRoutes = require('./routes/counsellor.routes');
 const app = express();
-const crossOrigins = ['https://auth.mappmyuniversity.com','https://career-psychometric-assesement.mappmyuniversity.com','https://career-api.mappmyuniversity.com','http://127.0.0.1:5173','http://127.0.0.1:5174','http://127.0.0.1:4000','http://127.0.0.1:4002'];
+const crossOrigins = ['https://auth.mappmyuniversity.com','https://career-psychometric-assessment.mappmyuniversity.com','https://career-api.mappmyuniversity.com','http://127.0.0.1:5173','http://127.0.0.1:5174','http://127.0.0.1:4000','http://127.0.0.1:4002'];
 // === Middlewares
 app.use(cors({
   origin: crossOrigins,
