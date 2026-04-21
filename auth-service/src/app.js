@@ -13,15 +13,8 @@ const app = express();
 const crossOrigins = [
   'https://auth.mappmyuniversity.com',
   'https://career-psychometric-assessment.mappmyuniversity.com',
-  'https://career-api.mappmyuniversity.com',
-
-  // Test domains
   'https://auth-test.mappmyuniversity.com',
-  'https://auth-api-test.mappmyuniversity.com',
   'https://career-psychometric-assessment-test.mappmyuniversity.com',
-  'https://career-api-test.mappmyuniversity.com',
-
-  // Local development
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
   'http://127.0.0.1:4000',
@@ -32,9 +25,10 @@ const crossOrigins = [
   'http://localhost:4002'
 ];
 
-// === Middlewares
-app.use(cors({
-  origin: function (origin, callback) {
+const corsOptions = {
+  origin(origin, callback) {
+    // Allow requests without Origin header
+    // Example: Postman, curl, server-to-server
     if (!origin) {
       return callback(null, true);
     }
@@ -43,7 +37,7 @@ app.use(cors({
       return callback(null, true);
     }
 
-    return callback(new Error(`CORS not allowed for origin: ${origin}`));
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -53,10 +47,15 @@ app.use(cors({
     'Content-Type',
     'Accept',
     'Authorization'
-  ]
-}));
+  ],
+  optionsSuccessStatus: 200
+};
 
-app.options(/.*/, cors());
+// === CORS must come before routes
+app.use(cors(corsOptions));
+
+// Express 5 compatible OPTIONS handler
+app.options('/{*path}', cors(corsOptions));
 
 app.use(cookieParser());
 app.use(express.json());
@@ -67,14 +66,17 @@ app.use('/api/v2/auth', authRoutes);
 app.use('/api/v2/counsellor', counsellorRoutes);
 app.use('/api/v2/internal', internalRoutes);
 
-// === Serve static frontend
+// === Static frontend
 const distPath = path.join(__dirname, '..', 'dist');
 app.use(express.static(distPath));
 
-// === SPA Fallback Middleware
+// === SPA fallback
 app.use(history({
   rewrites: [
-    { from: /^\/api\/.*$/, to: context => context.parsedUrl.pathname }
+    {
+      from: /^\/api\/.*$/,
+      to: context => context.parsedUrl.pathname
+    }
   ]
 }));
 
