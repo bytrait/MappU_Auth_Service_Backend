@@ -14,13 +14,18 @@ datasource db {
 // =======================
 //
 model User {
-  id        String   @id @default(uuid())
-  fullName  String
-  email     String   @unique
-  contact   String
-  role      UserRole
-  verified  Boolean  @default(false)
-  welcomeShown Boolean @default(false)
+  id             String            @id @default(uuid())
+  fullName       String
+  email          String            @unique
+  contact        String
+  role           UserRole
+  verified       Boolean           @default(false)
+  welcomeShown   Boolean           @default(false)
+
+  // -----------------------
+  // Student Registration Type
+  // -----------------------
+  registrationType StudentRegistrationType?
 
   // -----------------------
   // Counsellor → Student
@@ -87,14 +92,24 @@ enum UserRole {
 
 //
 // =======================
+// STUDENT REGISTRATION TYPE
+// =======================
+//
+enum StudentRegistrationType {
+  INDIVIDUAL
+  SCHOOL
+}
+
+//
+// =======================
 // REFERENCE CODES
 // =======================
 //
 model ReferenceCode {
   id        String   @id @default(uuid())
-  code      String   @unique   // e.g. ABC123
+  code      String   @unique
   type      ReferenceType
-  targetId  String            // COUNSELLOR → User.id | SCHOOL → School.id | INSTITUTION → User.id
+  targetId  String
   isActive  Boolean  @default(true)
 
   createdAt DateTime @default(now())

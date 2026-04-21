@@ -17,6 +17,10 @@ const {
   resolveReferenceCode,
 } = require("../utils/referenceCode");
 
+const {
+  createStudentPaymentRecord,
+} = require('../utils/studentPaymentClient.util');
+
 /**
  * -----------------------------
  * LOGIN OTP
@@ -28,7 +32,7 @@ const sendLoginOtpService = async (email) => {
 
   const otp = generateOtp();
   setOtp(email, otp);
-  sendOtpEmail(email, otp);
+  sendOtpEmail(email, otp, 'login');
 
   logger.info(`Login OTP sent to ${email}`);
   return { email };
@@ -67,7 +71,7 @@ const sendRegisterOtpService = async (email) => {
 
   const otp = generateOtp();
   setOtp(email, otp);
-  sendOtpEmail(email, otp);
+  sendOtpEmail(email, otp, 'registration');
 
   logger.info(`Register OTP sent to ${email}`);
   return { email };
@@ -91,143 +95,138 @@ const verifyRegisterOtp = async (email, otp) => {
  * REGISTER USER
  * -----------------------------
  */
+
 const registerUserService = async ({
   fullName,
   email,
   contact,
   role,
   referenceCode,
-  requestId
+  registrationType,
+  selectedSchoolId,
+  requestId,
 }) => {
-
-  // -----------------------------
-  // Email verification check
-  // -----------------------------
   const verified = await isEmailVerified(email);
+
   if (!verified) {
-    throw new Error("Email is not verified via OTP");
+    throw new Error('Email is not verified via OTP');
   }
 
-  // -----------------------------
-  // Prevent duplicate users
-  // -----------------------------
   const existingUser = await prisma.user.findUnique({
-    where: { email }
+    where: { email },
   });
 
   if (existingUser) {
-    throw new Error("User already exists with this email");
+    throw new Error('User already exists with this email');
   }
 
   let counsellorId = null;
   let schoolId = null;
   let institutionId = null;
 
-  // -----------------------------
-  // STUDENT FLOW
-  // -----------------------------
-  if (role === "STUDENT") {
-
+  if (role === 'STUDENT') {
     if (!referenceCode) {
-      throw new Error("Reference code is required for student registration");
+      throw new Error(
+        'Reference code is required for student registration'
+      );
+    }
+
+    if (!registrationType) {
+      throw new Error('Registration type is required');
+    }
+
+    if (
+      registrationType !== 'INDIVIDUAL' &&
+      registrationType !== 'SCHOOL'
+    ) {
+      throw new Error('Invalid registration type');
     }
 
     const resolved = await resolveReferenceCode(referenceCode);
 
     counsellorId = resolved.counsellorId;
-    schoolId = resolved.schoolId;
 
-    // -----------------------------
-    // Validate School Active Status
-    // -----------------------------
-    if (schoolId) {
-      const school = await prisma.school.findUnique({
-        where: { id: schoolId },
-        select: { isActive: true }
-      });
-
-      if (!school || !school.isActive) {
-        throw new Error("This school is not accepting registrations");
-      }
+    if (!counsellorId) {
+      throw new Error('Invalid reference code');
     }
 
-    const { consumeCredit, refundCredit } =
-      require("../utils/billingClient.util");
+    let schoolName = null;
 
-    // -----------------------------
-    // Step 1: Consume credit
-    // -----------------------------
-    console.log("Consuming credit for counsellorId:", counsellorId, "requestId:", requestId);
-    await consumeCredit({
-      counsellorId,
-      requestId
-    });
+    if (registrationType === 'SCHOOL') {
+      if (!selectedSchoolId) {
+        throw new Error('School selection is required');
+      }
 
-
-    logger.info("Credit consumed successfully", {
-      requestId,
-      counsellorId,
-      email
-    });
-
-    try {
-
-      // -----------------------------
-      // Step 2: Create student
-      // -----------------------------
-      const user = await prisma.user.create({
-        data: {
-          fullName,
-          email,
-          contact,
-          role,
+      const school = await prisma.school.findFirst({
+        where: {
+          id: selectedSchoolId,
           counsellorId,
-          schoolId,
-          institutionId,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
         },
       });
 
-      await deleteEmailVerifiedFlag(email);
+      if (!school || !school.isActive) {
+        throw new Error(
+          'Selected school is invalid or inactive'
+        );
+      }
 
-      logger.info("Student registered successfully", {
-        requestId,
-        userId: user.id,
-        counsellorId
-      });
-
-      const token = generateToken({
-        id: user.id,
-        fullName: user.fullName,
-        contact: user.contact,
-        email: user.email,
-        role: user.role,
-      });
-
-      return { user, token };
-
-    } catch (error) {
-
-      // -----------------------------
-      // Compensation: Refund credit
-      // -----------------------------
-      await refundCredit({
-        counsellorId,
-        requestId
-      });
-
-      logger.error("Student registration failed — credit refunded", {
-        requestId,
-        counsellorId,
-        error: error.message
-      });
-
-      throw error;
+      schoolId = school.id;
+      schoolName = school.name;
     }
-  }
 
-  // -----------------------------
-  // NON-STUDENT FLOW (ADMIN, COUNSELLOR, etc.)
-  // -----------------------------
+    if (registrationType === 'INDIVIDUAL') {
+      schoolId = null;
+    }
+
+    const user = await prisma.user.create({
+      data: {
+        fullName,
+        email,
+        contact,
+        role,
+        counsellorId,
+        schoolId,
+        institutionId,
+        registrationType,
+      },
+    });
+
+    await createStudentPaymentRecord({
+      studentId: user.id,
+      counsellorId,
+      registrationType,
+      schoolId,
+      schoolName,
+      referenceCode,
+      requestId,
+    });
+
+    await deleteEmailVerifiedFlag(email);
+
+    logger.info('Student registered successfully', {
+      requestId,
+      userId: user.id,
+      counsellorId,
+      schoolId,
+      registrationType,
+    });
+
+    const token = generateToken({
+      id: user.id,
+      fullName: user.fullName,
+      contact: user.contact,
+      email: user.email,
+      role: user.role,
+    });
+
+    return { user, token };
+  }
 
   const user = await prisma.user.create({
     data: {
@@ -241,41 +240,39 @@ const registerUserService = async ({
     },
   });
 
-  // Auto-generate reference code for counsellor
-  if (role === "COUNSELLOR") {
-
+  if (role === 'COUNSELLOR') {
     const code = await generateUniqueReferenceCode();
-  
+
     await prisma.referenceCode.create({
       data: {
         code,
-        type: "COUNSELLOR",
+        type: 'COUNSELLOR',
         targetId: user.id,
       },
     });
-  
+
     const { grantSignupCredits } =
-      require("../utils/billingClient.util");
-  
+      require('../utils/billingClient.util');
+
     await grantSignupCredits({
       counsellorId: user.id,
-      requestId
+      requestId,
     });
-  
-    logger.info("Reference code + signup credits granted", {
+
+    logger.info('Reference code + signup credits granted', {
       requestId,
       email,
-      userId: user.id
+      userId: user.id,
     });
   }
 
   await deleteEmailVerifiedFlag(email);
 
-  logger.info("User registered successfully", {
+  logger.info('User registered successfully', {
     requestId,
     email,
     role,
-    userId: user.id
+    userId: user.id,
   });
 
   const token = generateToken({
@@ -288,7 +285,6 @@ const registerUserService = async ({
 
   return { user, token };
 };
-
 
 
 
@@ -411,6 +407,68 @@ const getCurrentUserService = async ({ userId }) => {
 };
 
 
+const getReferenceCodeDetailsService = async (referenceCode) => {
+  if (!referenceCode) {
+    throw new Error("Reference code is required");
+  }
+
+  const resolved = await resolveReferenceCode(referenceCode);
+
+  if (!resolved.counsellorId) {
+    throw new Error("Invalid reference code");
+  }
+
+  const counsellor = await prisma.user.findUnique({
+    where: {
+      id: resolved.counsellorId,
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+    },
+  });
+
+  if (!counsellor) {
+    throw new Error("Counsellor not found");
+  }
+
+  const schools = await prisma.school.findMany({
+    where: {
+      counsellorId: resolved.counsellorId,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+
+  const registrationOptions = [
+    {
+      type: "INDIVIDUAL",
+      label: "Personal Registration",
+    },
+    ...schools.map((school) => ({
+      type: "SCHOOL",
+      schoolId: school.id,
+      schoolName: school.name,
+      label: school.name,
+    })),
+  ];
+
+  return {
+    referenceCode,
+    counsellorId: counsellor.id,
+    counsellorName: counsellor.fullName,
+    registrationOptions,
+  };
+};
+
+
 module.exports = {
   sendLoginOtpService,
   verifyLoginOtpService,
@@ -421,4 +479,5 @@ module.exports = {
   getCounsellorStudentsService,
   verifyStudentOwnershipService,
   getCurrentUserService,
+  getReferenceCodeDetailsService
 };
