@@ -1,7 +1,7 @@
 const express = require('express');
 const validate = require('../middleware/validate.middleware');
 const { sendOtpSchema, verifyOtpSchema, registerSchema } = require('../validators/auth.schema');
-const { sendLoginOtpController, sendRegisterOtpController, verifyRegisterOtpController, registerUserController, verifyLoginOtpController, logoutController, isAuthenticated, getUserDetailsByIdController, getCounsellorStudentsController, verifyStudentOwnershipController, getCurrentUser } = require('../controllers/auth.controller');
+const { sendLoginOtpController, sendRegisterOtpController, verifyRegisterOtpController, registerUserController, verifyLoginOtpController, logoutController, isAuthenticated, getUserDetailsByIdController, getCounsellorStudentsController, verifyStudentOwnershipController, getCurrentUser, getReferenceCodeDetailsController } = require('../controllers/auth.controller');
 const requireAuth = require('../middleware/requireAuth');
 const requireRole = require('../middleware/requireRole');
 
@@ -38,6 +38,11 @@ router.get(
   getCurrentUser
 );
 
+
+router.get(
+  '/reference-code-details',
+  getReferenceCodeDetailsController
+);
 
 
 

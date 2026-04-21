@@ -8,6 +8,7 @@ const {
   getCounsellorStudentsService,
   verifyStudentOwnershipService,
   getCurrentUserService,
+  getReferenceCodeDetailsService
 } = require('../services/auth.service');
 
 const { logger } = require('../config/logger');
@@ -263,6 +264,27 @@ const getCurrentUser = async (req, res, next) => {
   }
 };
 
+const getReferenceCodeDetailsController = async (req, res) => {
+  try {
+    const { referenceCode } = req.query;
+
+    const result = await getReferenceCodeDetailsService(referenceCode);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Reference code validated successfully',
+      data: result,
+    });
+  } catch (error) {
+    logger.error('Reference code validation failed:', error);
+
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 module.exports = {
   sendLoginOtpController,
   sendRegisterOtpController,
@@ -275,4 +297,5 @@ module.exports = {
   getCounsellorStudentsController,
   verifyStudentOwnershipController,
   getCurrentUser,
+  getReferenceCodeDetailsController,
 };
