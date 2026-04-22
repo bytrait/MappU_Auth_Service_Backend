@@ -184,17 +184,40 @@ const registerUserService = async ({
       schoolId = null;
     }
 
+    const userData = {
+      fullName,
+      email,
+      contact,
+      role,
+      registrationType,
+    };
+
+    if (schoolId) {
+      userData.school = {
+        connect: {
+          id: schoolId,
+        },
+      };
+    }
+
+    if (institutionId) {
+      userData.institution = {
+        connect: {
+          id: institutionId,
+        },
+      };
+    }
+
+    if (counsellorId) {
+      userData.counsellor = {
+        connect: {
+          id: counsellorId,
+        },
+      };
+    }
+
     const user = await prisma.user.create({
-      data: {
-        fullName,
-        email,
-        contact,
-        role,
-        counsellorId,
-        schoolId,
-        institutionId,
-        registrationType,
-      },
+      data: userData,
     });
 
     await createStudentPaymentRecord({
@@ -228,16 +251,39 @@ const registerUserService = async ({
     return { user, token };
   }
 
+  const userData = {
+    fullName,
+    email,
+    contact,
+    role,
+  };
+
+  if (schoolId) {
+    userData.school = {
+      connect: {
+        id: schoolId,
+      },
+    };
+  }
+
+  if (institutionId) {
+    userData.institution = {
+      connect: {
+        id: institutionId,
+      },
+    };
+  }
+
+  if (counsellorId) {
+    userData.counsellor = {
+      connect: {
+        id: counsellorId,
+      },
+    };
+  }
+
   const user = await prisma.user.create({
-    data: {
-      fullName,
-      email,
-      contact,
-      role,
-      counsellorId,
-      schoolId,
-      institutionId,
-    },
+    data: userData,
   });
 
   if (role === 'COUNSELLOR') {
@@ -285,7 +331,6 @@ const registerUserService = async ({
 
   return { user, token };
 };
-
 
 
 /**
