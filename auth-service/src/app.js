@@ -1,66 +1,102 @@
-const express = require('express');
-require('dotenv').config();
-const cors = require('cors');
-const cookieParser = require('cookie-parser');
+const express = require("express")
+require("dotenv").config()
 
-const authRoutes = require('./routes/auth.routes');
-const counsellorRoutes = require('./routes/counsellor.routes');
-const internalRoutes = require('./routes/internal.routes');
+const cors = require("cors")
+const cookieParser = require("cookie-parser")
 
-const app = express();
+const authRoutes = require("./routes/auth.routes")
+const counsellorRoutes = require("./routes/counsellor.routes")
+const internalRoutes = require("./routes/internal.routes")
 
-const crossOrigins = [
-  'https://auth.mappmyuniversity.com',
-  'https://career-psychometric-assessment.mappmyuniversity.com',
+const app = express()
 
-  // Test domains
-  'https://auth-test.mappmyuniversity.com',
-  'https://career-psychometric-assessment-test.mappmyuniversity.com',
+/* =======================================================
+   CORS CONFIG
+======================================================= */
 
-  // Local development
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:5174',
-  'http://127.0.0.1:4000',
-  'http://127.0.0.1:4002',
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://localhost:4000',
-  'http://localhost:4002'
-];
+// Convert env string -> array
+const corsOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",").map(origin => origin.trim())
+  : []
 
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin) {
-      return callback(null, true);
-    }
+    try {
+      // Allow Postman/mobile apps/server-side requests
+      if (!origin) {
+        return callback(null, true)
+      }
 
-    if (crossOrigins.includes(origin)) {
-      return callback(null, true);
-    }
+      // Allow configured origins
+      if (corsOrigins.includes(origin)) {
+        return callback(null, true)
+      }
 
-    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+      console.error(`❌ Blocked by CORS: ${origin}`)
+
+      return callback(
+        new Error(`Origin ${origin} not allowed by CORS`)
+      )
+    } catch (err) {
+      callback(err)
+    }
   },
+
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
-    'Origin',
-    'X-Requested-With',
-    'Content-Type',
-    'Accept',
-    'Authorization'
+
+  methods: [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
   ],
-  optionsSuccessStatus: 200
-};
 
-app.use(cors(corsOptions));
-app.options('/{*path}', cors(corsOptions));
+  allowedHeaders: [
+    "Origin",
+    "X-Requested-With",
+    "Content-Type",
+    "Accept",
+    "Authorization",
+  ],
 
-app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+  optionsSuccessStatus: 200,
+}
 
-app.use('/api/v2/auth', authRoutes);
-app.use('/api/v2/counsellor', counsellorRoutes);
-app.use('/api/v2/internal', internalRoutes);
+/* =======================================================
+   MIDDLEWARE
+======================================================= */
 
-module.exports = app;
+app.use(cors(corsOptions))
+
+app.options(/.*/, cors(corsOptions))
+
+app.use(cookieParser())
+
+app.use(express.json())
+
+app.use(express.urlencoded({ extended: true }))
+
+/* =======================================================
+   ROUTES
+======================================================= */
+
+app.use("/api/v2/auth", authRoutes)
+
+app.use("/api/v2/counsellor", counsellorRoutes)
+
+app.use("/api/v2/internal", internalRoutes)
+
+/* =======================================================
+   HEALTH CHECK
+======================================================= */
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Auth service running",
+  })
+})
+
+module.exports = app

@@ -10,38 +10,10 @@ const {
   getCurrentUserService,
   getReferenceCodeDetailsService
 } = require('../services/auth.service');
+const { buildCookieOptions } = require('../utils/cookie.utils');
 
 const { logger } = require('../config/logger');
 
-// ---------------------------
-// ENVIRONMENT & COOKIE CONFIG
-// ---------------------------
-const isProd = process.env.NODE_ENV === 'prod';
-
-const baseCookieConfig = {
-  httpOnly: true,
-  path: '/',
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-};
-
-// Production → HTTPS + subdomains
-const prodCookieConfig = {
-  ...baseCookieConfig,
-  secure: true,
-  sameSite: 'None',
-  domain: '.mappmyuniversity.com'
-};
-
-// Development → 127.0.0.1 cross-port sharing
-const devCookieConfig = {
-  ...baseCookieConfig,
-  secure: false,
-  sameSite: 'lax',   // REQUIRED for 127.0.0.1
-  // IMPORTANT: no domain for 127.0.0.1
-};
-
-// Select correct config
-const cookieOptions = isProd ? prodCookieConfig : devCookieConfig;
 
 // ---------------------------
 // CONTROLLERS
@@ -86,7 +58,8 @@ const verifyLoginOtpController = async (req, res) => {
     const { user, token } = await verifyLoginOtpService(email, otp);
 
     // Set cookie
-    res.cookie('auth-token', token, cookieOptions);
+    res.cookie('auth-token', token,   buildCookieOptions(req)
+);
 
     return res.status(200).json({
       message: 'Login successful',
@@ -127,7 +100,8 @@ const registerUserController = async (req, res) => {
       requestId: req.requestId
     });
 
-    res.cookie('auth-token', token, cookieOptions);
+    res.cookie('auth-token', token,   buildCookieOptions(req)
+);
 
     return res.status(201).json({
       success: true,
@@ -267,6 +241,7 @@ const getCurrentUser = async (req, res, next) => {
 const getReferenceCodeDetailsController = async (req, res) => {
   try {
     const { referenceCode } = req.query;
+    console.log('Received reference code:', referenceCode);
 
     const result = await getReferenceCodeDetailsService(referenceCode);
 

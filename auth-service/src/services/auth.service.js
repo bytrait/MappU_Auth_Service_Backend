@@ -220,6 +220,7 @@ const registerUserService = async ({
       data: userData,
     });
 
+    logger.info('creating student payment record')
     await createStudentPaymentRecord({
       studentId: user.id,
       counsellorId,

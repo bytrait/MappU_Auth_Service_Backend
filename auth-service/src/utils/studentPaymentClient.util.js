@@ -18,6 +18,14 @@ exports.createStudentPaymentRecord = async ({
   requestId,
 }) => {
   try {
+    console.log('Creating student payment record with data:', {
+      studentId,
+      counsellorId,
+      registrationType,
+      schoolId,
+      schoolName,
+      referenceCode,
+    });
     const response = await billingClient.post(
       '/student-payment-internal/student-payment/create',
       {
@@ -36,17 +44,22 @@ exports.createStudentPaymentRecord = async ({
         },
       }
     );
+    console.log('Received response from billing service:', response.data);
 
     return response.data.data;
   } catch (error) {
     logger.error('Create student payment record failed', {
       requestId,
-      error: error.response?.data || error.message,
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      response: error.response?.data,
+      message: error.message,
     });
 
     throw new Error(
       error.response?.data?.message ||
-        'Failed to create student payment record'
+      'Failed to create student payment record'
     );
   }
 };
