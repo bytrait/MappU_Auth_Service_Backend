@@ -14,12 +14,20 @@ const {
 
 const {
   generateUniqueReferenceCode,
+  normalizeReferenceCodeInput,
   resolveReferenceCode,
 } = require("../utils/referenceCode");
 
 const {
   createStudentPaymentRecord,
 } = require('../utils/studentPaymentClient.util');
+const { grantSignupCredits } = require('../utils/billingClient.util');
+
+const {
+  badRequest,
+  conflict,
+  notFound,
+} = require('../utils/HttpError');
 
 /**
  * -----------------------------
@@ -91,6 +99,126 @@ const verifyRegisterOtp = async (email, otp) => {
 };
 
 /**
+ * Resolve a reference code into registration context for student signup.
+ * The token type (COUNSELLOR vs SCHOOL) determines registrationType and
+ * school — students must not pick a different school than the token implies.
+ */
+const buildRegistrationContextFromCode = async (referenceCode) => {
+  const normalizedCode = normalizeReferenceCodeInput(referenceCode);
+  const resolved = await resolveReferenceCode(normalizedCode);
+
+  const token = await prisma.referenceCode.findUnique({
+    where: { code: normalizedCode },
+    select: {
+      id: true,
+      code: true,
+      type: true,
+      label: true,
+      targetId: true,
+    },
+  });
+
+  if (!token) {
+    throw notFound('Invalid reference code', { code: 'CODE_INVALID' });
+  }
+
+  let registrationType;
+  let schoolId = null;
+  let schoolName = null;
+
+  if (token.type === 'SCHOOL') {
+    registrationType = 'SCHOOL';
+    schoolId = resolved.schoolId;
+
+    const school = await prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { id: true, name: true, isActive: true },
+    });
+
+    if (!school || !school.isActive) {
+      throw notFound('Invalid or inactive school reference', {
+        code: 'SCHOOL_INACTIVE',
+      });
+    }
+    schoolName = school.name;
+  } else if (token.type === 'COUNSELLOR') {
+    registrationType = 'INDIVIDUAL';
+    schoolId = null;
+    schoolName = null;
+  } else {
+    throw badRequest('Unsupported reference code type');
+  }
+
+  const counsellor = await prisma.user.findUnique({
+    where: { id: resolved.counsellorId },
+    select: { id: true, fullName: true },
+  });
+
+  if (!counsellor) {
+    throw notFound('Counsellor not found');
+  }
+
+  return {
+    referenceCode: normalizedCode,
+    referenceCodeId: token.id,
+    tokenType: token.type,
+    tokenLabel: token.label,
+    registrationType,
+    counsellorId: counsellor.id,
+    counsellorName: counsellor.fullName,
+    schoolId,
+    schoolName,
+  };
+};
+
+/**
+ * If the FE still sends registrationType / selectedSchoolId (legacy clients),
+ * verify they match the token-derived values.
+ */
+const assertRegistrationPayloadMatchesToken = (
+  context,
+  { registrationType, selectedSchoolId }
+) => {
+  if (
+    registrationType !== undefined &&
+    registrationType !== null &&
+    registrationType !== '' &&
+    registrationType !== context.registrationType
+  ) {
+    throw conflict(
+      'Registration type does not match this reference code',
+      { code: 'REGISTRATION_TYPE_MISMATCH' }
+    );
+  }
+
+  if (context.registrationType === 'SCHOOL') {
+    if (
+      selectedSchoolId !== undefined &&
+      selectedSchoolId !== null &&
+      selectedSchoolId !== '' &&
+      selectedSchoolId !== context.schoolId
+    ) {
+      throw conflict(
+        'Selected school does not match this reference code',
+        { code: 'SCHOOL_MISMATCH' }
+      );
+    }
+  }
+
+  if (
+    context.registrationType === 'INDIVIDUAL' &&
+    selectedSchoolId !== undefined &&
+    selectedSchoolId !== null &&
+    selectedSchoolId !== ''
+  ) {
+    throw conflict(
+      'This reference code is for individual registration only',
+      { code: 'SCHOOL_NOT_ALLOWED' }
+    );
+  }
+};
+
+/**
  * -----------------------------
  * REGISTER USER
  * -----------------------------
@@ -126,70 +254,27 @@ const registerUserService = async ({
 
   if (role === 'STUDENT') {
     if (!referenceCode) {
-      throw new Error(
-        'Reference code is required for student registration'
-      );
+      throw badRequest('Reference code is required for student registration');
     }
 
-    if (!registrationType) {
-      throw new Error('Registration type is required');
-    }
+    const regContext = await buildRegistrationContextFromCode(referenceCode);
+    assertRegistrationPayloadMatchesToken(regContext, {
+      registrationType,
+      selectedSchoolId,
+    });
 
-    if (
-      registrationType !== 'INDIVIDUAL' &&
-      registrationType !== 'SCHOOL'
-    ) {
-      throw new Error('Invalid registration type');
-    }
-
-    const resolved = await resolveReferenceCode(referenceCode);
-
-    counsellorId = resolved.counsellorId;
-
-    if (!counsellorId) {
-      throw new Error('Invalid reference code');
-    }
-
-    let schoolName = null;
-
-    if (registrationType === 'SCHOOL') {
-      if (!selectedSchoolId) {
-        throw new Error('School selection is required');
-      }
-
-      const school = await prisma.school.findFirst({
-        where: {
-          id: selectedSchoolId,
-          counsellorId,
-          isActive: true,
-        },
-        select: {
-          id: true,
-          name: true,
-          isActive: true,
-        },
-      });
-
-      if (!school || !school.isActive) {
-        throw new Error(
-          'Selected school is invalid or inactive'
-        );
-      }
-
-      schoolId = school.id;
-      schoolName = school.name;
-    }
-
-    if (registrationType === 'INDIVIDUAL') {
-      schoolId = null;
-    }
+    counsellorId = regContext.counsellorId;
+    schoolId = regContext.schoolId;
+    const schoolName = regContext.schoolName;
+    const effectiveRegistrationType = regContext.registrationType;
+    const normalizedReferenceCode = regContext.referenceCode;
 
     const userData = {
       fullName,
       email,
       contact,
       role,
-      registrationType,
+      registrationType: effectiveRegistrationType,
     };
 
     if (schoolId) {
@@ -220,13 +305,14 @@ const registerUserService = async ({
       data: userData,
     });
 
-    await createStudentPaymentRecord({
+    const payment = await createStudentPaymentRecord({
       studentId: user.id,
       counsellorId,
-      registrationType,
+      registrationType: effectiveRegistrationType,
       schoolId,
       schoolName,
-      referenceCode,
+      referenceCode: normalizedReferenceCode,
+      referenceCodeId: regContext.referenceCodeId,
       requestId,
     });
 
@@ -237,7 +323,11 @@ const registerUserService = async ({
       userId: user.id,
       counsellorId,
       schoolId,
-      registrationType,
+      registrationType: effectiveRegistrationType,
+      referenceCode: normalizedReferenceCode,
+      referenceCodeId: regContext.referenceCodeId,
+      paymentStatus: payment?.status,
+      paymentAmount: payment?.amount,
     });
 
     const token = generateToken({
@@ -248,7 +338,7 @@ const registerUserService = async ({
       role: user.role,
     });
 
-    return { user, token };
+    return { user, token, payment };
   }
 
   const userData = {
@@ -296,9 +386,6 @@ const registerUserService = async ({
         targetId: user.id,
       },
     });
-
-    const { grantSignupCredits } =
-      require('../utils/billingClient.util');
 
     await grantSignupCredits({
       counsellorId: user.id,
@@ -452,64 +539,36 @@ const getCurrentUserService = async ({ userId }) => {
 };
 
 
+/**
+ * Token-centric preview for student registration.
+ * School tokens → show that school only. Counsellor tokens → individual only.
+ * No school/individual picker list.
+ */
 const getReferenceCodeDetailsService = async (referenceCode) => {
   if (!referenceCode) {
-    throw new Error("Reference code is required");
+    throw badRequest('Reference code is required');
   }
 
-  const resolved = await resolveReferenceCode(referenceCode);
+  const ctx = await buildRegistrationContextFromCode(referenceCode);
 
-  if (!resolved.counsellorId) {
-    throw new Error("Invalid reference code");
-  }
-
-  const counsellor = await prisma.user.findUnique({
-    where: {
-      id: resolved.counsellorId,
-    },
-    select: {
-      id: true,
-      fullName: true,
-      email: true,
-    },
-  });
-
-  if (!counsellor) {
-    throw new Error("Counsellor not found");
-  }
-
-  const schools = await prisma.school.findMany({
-    where: {
-      counsellorId: resolved.counsellorId,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      name: true,
-    },
-    orderBy: {
-      name: "asc",
-    },
-  });
-
-  const registrationOptions = [
-    {
-      type: "INDIVIDUAL",
-      label: "Personal Registration",
-    },
-    ...schools.map((school) => ({
-      type: "SCHOOL",
-      schoolId: school.id,
-      schoolName: school.name,
-      label: school.name,
-    })),
-  ];
+  const isSchoolToken = ctx.tokenType === 'SCHOOL';
 
   return {
-    referenceCode,
-    counsellorId: counsellor.id,
-    counsellorName: counsellor.fullName,
-    registrationOptions,
+    referenceCode: ctx.referenceCode,
+    referenceCodeId: ctx.referenceCodeId,
+    tokenType: ctx.tokenType,
+    tokenLabel: ctx.tokenLabel,
+    registrationType: ctx.registrationType,
+    counsellorId: ctx.counsellorId,
+    counsellorName: ctx.counsellorName,
+    schoolId: ctx.schoolId,
+    schoolName: ctx.schoolName,
+    display: {
+      title: isSchoolToken ? ctx.schoolName : null,
+      subtitle: ctx.tokenLabel || null,
+      showSchoolPicker: false,
+      showSchoolName: isSchoolToken,
+    },
   };
 };
 

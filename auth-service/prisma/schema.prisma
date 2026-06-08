@@ -106,13 +106,22 @@ enum StudentRegistrationType {
 // =======================
 //
 model ReferenceCode {
-  id        String   @id @default(uuid())
-  code      String   @unique
-  type      ReferenceType
-  targetId  String
-  isActive  Boolean  @default(true)
+  id         String        @id @default(uuid())
+  code       String        @unique
+  type       ReferenceType
+  targetId   String
 
-  createdAt DateTime @default(now())
+  label      String?
+  startDate  DateTime      @default(now())
+  expiryDate DateTime?
+
+  isActive   Boolean       @default(true)
+
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([targetId, type, isActive])
+  @@index([targetId, type, expiryDate])
 }
 
 //
