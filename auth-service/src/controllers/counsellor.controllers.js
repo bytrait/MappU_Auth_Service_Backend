@@ -11,47 +11,83 @@ const {
   rotateSchoolReferenceCodeService,
   rotateCounsellorReferenceCodeService,
   markWelcomeShownService,
+  createCounsellorReferenceTokenService,
+  listCounsellorReferenceTokensService,
+  createSchoolReferenceTokenService,
+  listSchoolReferenceTokensService,
+  extendReferenceTokenService,
+  updateReferenceTokenPriceService,
+  deactivateReferenceTokenService,
 } = require('../services/counsellor.service');
+const { forbidden } = require('../utils/HttpError');
 
+const requestIdFrom = (req) =>
+  req.headers['x-request-id'] || req.id || undefined;
 
-const getCounsellorReferenceCodeController = async (req, res) => {
+// ---------------------------------------------------------------------------
+// Legacy single-code endpoints
+// ---------------------------------------------------------------------------
+
+const getCounsellorReferenceCodeController = async (req, res, next) => {
   try {
     const { id, role } = req.user;
 
-    // Extra safety (route should already be protected)
     if (role !== 'COUNSELLOR') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only counsellors can access reference code',
-      });
+      throw forbidden('Only counsellors can access reference code');
     }
 
     const referenceCode = await getCounsellorReferenceCodeService(id);
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
-      data: referenceCode, // { code }
+      data: referenceCode,
     });
   } catch (error) {
-    logger.error('Get counsellor reference code failed:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to fetch reference code',
-    });
+    next(error);
   }
 };
 
-/**
- * -----------------------------
- * CREATE SCHOOL
- * -----------------------------
- */
+const rotateCounsellorReferenceCode = async (req, res, next) => {
+  try {
+    const counsellorId = req.user.id;
+    const code = await rotateCounsellorReferenceCodeService({ counsellorId });
+    res.json({
+      message: "Counsellor reference code rotated successfully",
+      data: code,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// School CRUD
+// ---------------------------------------------------------------------------
+
 const createSchool = async (req, res, next) => {
   try {
     const counsellorId = req.user.id;
-    const { name } = req.body;
+    const {
+      name,
+      tokenCode,
+      tokenLabel,
+      tokenStartDate,
+      tokenExpiryDate,
+      price,
+      currency,
+    } = req.body;
 
-    const school = await createSchoolService({ counsellorId, name });
+    const school = await createSchoolService({
+      counsellorId,
+      name,
+      tokenCode,
+      tokenLabel,
+      tokenStartDate,
+      tokenExpiryDate,
+      price,
+      currency,
+      requestId: requestIdFrom(req),
+    });
 
     res.status(201).json({
       message: "School created successfully",
@@ -62,15 +98,9 @@ const createSchool = async (req, res, next) => {
   }
 };
 
-/**
- * -----------------------------
- * LIST SCHOOLS
- * -----------------------------
- */
 const listSchools = async (req, res, next) => {
   try {
     const counsellorId = req.user.id;
-
     const schools = await listSchoolsService({ counsellorId });
 
     res.json({
@@ -87,11 +117,6 @@ const listSchools = async (req, res, next) => {
   }
 };
 
-/**
- * -----------------------------
- * UPDATE SCHOOL
- * -----------------------------
- */
 const updateSchool = async (req, res, next) => {
   try {
     const counsellorId = req.user.id;
@@ -114,11 +139,6 @@ const updateSchool = async (req, res, next) => {
   }
 };
 
-/**
- * -----------------------------
- * GET STUDENTS OF A SCHOOL
- * -----------------------------
- */
 const getSchoolStudents = async (req, res, next) => {
   try {
     const counsellorId = req.user.id;
@@ -139,11 +159,6 @@ const getSchoolStudents = async (req, res, next) => {
   }
 };
 
-/**
- * -----------------------------
- * GET DIRECT (NO SCHOOL) STUDENTS
- * -----------------------------
- */
 const getDirectStudents = async (req, res, next) => {
   try {
     const counsellorId = req.user.id;
@@ -162,11 +177,6 @@ const getDirectStudents = async (req, res, next) => {
   }
 };
 
-/**
- * -----------------------------
- * ASSIGN STUDENT TO SCHOOL
- * -----------------------------
- */
 const assignStudentToSchool = async (req, res, next) => {
   try {
     const counsellorId = req.user.id;
@@ -187,11 +197,6 @@ const assignStudentToSchool = async (req, res, next) => {
   }
 };
 
-/**
- * -----------------------------
- * REMOVE STUDENT FROM SCHOOL
- * -----------------------------
- */
 const removeStudentFromSchool = async (req, res, next) => {
   try {
     const counsellorId = req.user.id;
@@ -211,11 +216,6 @@ const removeStudentFromSchool = async (req, res, next) => {
   }
 };
 
-/**
- * -----------------------------
- * GET SCHOOL REFERENCE CODE
- * -----------------------------
- */
 const getSchoolReferenceCode = async (req, res, next) => {
   try {
     const counsellorId = req.user.id;
@@ -232,11 +232,6 @@ const getSchoolReferenceCode = async (req, res, next) => {
   }
 };
 
-/**
- * -----------------------------
- * ROTATE SCHOOL REFERENCE CODE
- * -----------------------------
- */
 const rotateSchoolReferenceCode = async (req, res, next) => {
   try {
     const counsellorId = req.user.id;
@@ -256,31 +251,167 @@ const rotateSchoolReferenceCode = async (req, res, next) => {
   }
 };
 
-const rotateCounsellorReferenceCode = async (req, res, next) => {
+const markWelcomeShown = async (req, res, next) => {
   try {
     const counsellorId = req.user.id;
+    await markWelcomeShownService({ counsellorId });
+    res.json({ message: "Welcome shown marked successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
 
-    const code = await rotateCounsellorReferenceCodeService({
+// ---------------------------------------------------------------------------
+// NEW: multi-token controllers
+// ---------------------------------------------------------------------------
+
+const createCounsellorReferenceToken = async (req, res, next) => {
+  try {
+    const counsellorId = req.user.id;
+    const { code, label, startDate, expiryDate, price, currency } = req.body;
+
+    const token = await createCounsellorReferenceTokenService({
       counsellorId,
+      code,
+      label,
+      startDate,
+      expiryDate,
+      price,
+      currency,
+      requestId: requestIdFrom(req),
     });
 
-    res.json({
-      message: "Counsellor reference code rotated successfully",
-      data: code,
+    res.status(201).json({
+      message: "Reference token created successfully",
+      data: token,
     });
   } catch (error) {
     next(error);
   }
 };
 
-const markWelcomeShown = async (req, res, next) => {
+const listCounsellorReferenceTokens = async (req, res, next) => {
   try {
     const counsellorId = req.user.id;
+    const includeInactive = req.query.includeInactive === 'true';
 
-    await markWelcomeShownService({ counsellorId });
+    const tokens = await listCounsellorReferenceTokensService({
+      counsellorId,
+      includeInactive,
+    });
+
+    res.json({ data: tokens });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const createSchoolReferenceToken = async (req, res, next) => {
+  try {
+    const counsellorId = req.user.id;
+    const { schoolId } = req.params;
+    const { code, label, startDate, expiryDate, price, currency } = req.body;
+
+    const token = await createSchoolReferenceTokenService({
+      counsellorId,
+      schoolId,
+      code,
+      label,
+      startDate,
+      expiryDate,
+      price,
+      currency,
+      requestId: requestIdFrom(req),
+    });
+
+    res.status(201).json({
+      message: "School reference token created successfully",
+      data: token,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const listSchoolReferenceTokens = async (req, res, next) => {
+  try {
+    const counsellorId = req.user.id;
+    const { schoolId } = req.params;
+    const includeInactive = req.query.includeInactive === 'true';
+
+    const tokens = await listSchoolReferenceTokensService({
+      counsellorId,
+      schoolId,
+      includeInactive,
+    });
+
+    res.json({ data: tokens });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const extendReferenceToken = async (req, res, next) => {
+  try {
+    const counsellorId = req.user.id;
+    const { tokenId } = req.params;
+    const { expiryDate, price, currency } = req.body;
+
+    const token = await extendReferenceTokenService({
+      counsellorId,
+      tokenId,
+      expiryDate,
+      price,
+      currency,
+      requestId: requestIdFrom(req),
+    });
 
     res.json({
-      message: "Welcome shown marked successfully",
+      message: "Reference token extended successfully",
+      data: token,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateReferenceTokenPrice = async (req, res, next) => {
+  try {
+    const counsellorId = req.user.id;
+    const { tokenId } = req.params;
+    const { price, currency } = req.body;
+
+    const result = await updateReferenceTokenPriceService({
+      counsellorId,
+      tokenId,
+      price,
+      currency,
+      requestId: requestIdFrom(req),
+    });
+
+    res.json({
+      message: "Reference token price updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const deactivateReferenceToken = async (req, res, next) => {
+  try {
+    const counsellorId = req.user.id;
+    const { tokenId } = req.params;
+
+    const token = await deactivateReferenceTokenService({
+      counsellorId,
+      tokenId,
+      requestId: requestIdFrom(req),
+    });
+
+    res.json({
+      message: "Reference token deactivated successfully",
+      data: token,
     });
   } catch (error) {
     next(error);
@@ -300,4 +431,12 @@ module.exports = {
   rotateSchoolReferenceCode,
   rotateCounsellorReferenceCode,
   markWelcomeShown,
+
+  createCounsellorReferenceToken,
+  listCounsellorReferenceTokens,
+  createSchoolReferenceToken,
+  listSchoolReferenceTokens,
+  extendReferenceToken,
+  updateReferenceTokenPrice,
+  deactivateReferenceToken,
 };

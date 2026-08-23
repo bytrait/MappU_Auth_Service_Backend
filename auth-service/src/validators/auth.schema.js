@@ -9,7 +9,16 @@ const verifyOtpSchema = z.object({
     otp: z.string().length(6, { message: 'OTP must be 6 digits' }),
 });
 
-// auth.schema.js
+const referenceCodeSchema = z
+    .string()
+    .trim()
+    .min(4, 'Reference code must be at least 4 characters')
+    .max(20, 'Reference code must be at most 20 characters')
+    .regex(
+        /^[A-Za-z0-9]+$/,
+        'Reference code must contain only letters and numbers'
+    )
+    .transform((val) => val.toUpperCase());
 
 const registerSchema = z
     .object({
@@ -23,14 +32,11 @@ const registerSchema = z
 
         role: z.enum(['STUDENT', 'COUNSELLOR', 'INSTITUTION']),
 
-        referenceCode: z
-            .string()
-            .length(6, 'Reference code must be 6 characters')
-            .optional(),
+        referenceCode: referenceCodeSchema.optional(),
 
-        registrationType: z
-            .enum(['INDIVIDUAL', 'SCHOOL'])
-            .optional(),
+        // Optional for students — derived from the reference token on the server.
+        // Legacy clients may still send these; server validates they match the token.
+        registrationType: z.enum(['INDIVIDUAL', 'SCHOOL']).optional(),
 
         selectedSchoolId: z
             .union([
@@ -49,25 +55,6 @@ const registerSchema = z
                     message: 'Reference code is required for student registration',
                 });
             }
-
-            if (!data.registrationType) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ['registrationType'],
-                    message: 'Registration type is required',
-                });
-            }
-
-            if (
-                data.registrationType === 'SCHOOL' &&
-                !data.selectedSchoolId
-            ) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ['selectedSchoolId'],
-                    message: 'Please select a school',
-                });
-            }
         }
     });
 
@@ -75,4 +62,5 @@ module.exports = {
     sendOtpSchema,
     verifyOtpSchema,
     registerSchema,
+    referenceCodeSchema,
 };

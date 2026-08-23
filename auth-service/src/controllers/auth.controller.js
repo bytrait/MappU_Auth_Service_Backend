@@ -87,15 +87,13 @@ const verifyRegisterOtpController = async (req, res, next) => {
       result,
     });
   } catch (error) {
-    logger.error(`[verify-register-otp] Error: ${error.message}`);
-    res.status(400).json({ success: false, message: error.message });
     next(error);
   }
 };
 
-const registerUserController = async (req, res) => {
+const registerUserController = async (req, res, next) => {
   try {
-    const { user, token } = await registerUserService({
+    const { user, token, payment } = await registerUserService({
       ...req.body,
       requestId: req.requestId
     });
@@ -107,18 +105,10 @@ const registerUserController = async (req, res) => {
       success: true,
       message: 'User registered successfully',
       user,
+      ...(payment ? { payment } : {}),
     });
   } catch (error) {
-    logger.error('Registration failed', {
-      requestId: req.requestId,
-      error: error.message
-    });
-
-    return res.status(400).json({
-      success: false,
-      message: error.message || 'Registration failed',
-      requestId: req.requestId
-    });
+    next(error);
   }
 };
 
@@ -238,7 +228,7 @@ const getCurrentUser = async (req, res, next) => {
   }
 };
 
-const getReferenceCodeDetailsController = async (req, res) => {
+const getReferenceCodeDetailsController = async (req, res, next) => {
   try {
     const { referenceCode } = req.query;
     console.log('Received reference code:', referenceCode);
@@ -251,12 +241,7 @@ const getReferenceCodeDetailsController = async (req, res) => {
       data: result,
     });
   } catch (error) {
-    logger.error('Reference code validation failed:', error);
-
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
+    next(error);
   }
 };
 
