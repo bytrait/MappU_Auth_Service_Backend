@@ -1,26 +1,30 @@
 const transporter = require('../config/mailer.config');
 const { logger } = require('../config/logger');
+const { DEFAULT_BRAND } = require('./brand.util');
 
 /**
- * Send OTP email
+ * Send OTP email (tenant-branded).
  *
  * @param {string} email
  * @param {string} otp
  * @param {'registration' | 'login'} type
+ * @param {object} [brand]
  */
-const sendOtpEmail = async (email, otp, type = 'login') => {
+const sendOtpEmail = async (email, otp, type = 'login', brand = DEFAULT_BRAND) => {
   const isRegistration = type === 'registration';
+  const displayName = brand.displayName || DEFAULT_BRAND.displayName;
+  const fromName = brand.fromName || DEFAULT_BRAND.fromName;
 
   const subject = isRegistration
-    ? 'Your OTP for MapU Career Psychometric Assessment Registration'
-    : 'Your OTP for MapU Login';
+    ? `Your OTP for ${displayName} Registration`
+    : `Your OTP for ${displayName} Login`;
 
   const html = isRegistration
     ? `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background-color: #f9fafb; color: #333; border: 1px solid #e5e7eb; border-radius: 12px;">
         <div style="text-align: center; margin-bottom: 24px;">
           <h1 style="color: #1f2937; margin: 0;">
-            MapU Career Psychometric Assessment
+            ${displayName}
           </h1>
         </div>
 
@@ -29,7 +33,7 @@ const sendOtpEmail = async (email, otp, type = 'login') => {
         </p>
 
         <p style="font-size: 15px; line-height: 1.7; margin-bottom: 16px;">
-          Thank you for choosing to take the MapU Career Psychometric Assessment.
+          Thank you for choosing ${displayName}.
         </p>
 
         <p style="font-size: 15px; line-height: 1.7; margin-bottom: 20px;">
@@ -40,7 +44,7 @@ const sendOtpEmail = async (email, otp, type = 'login') => {
           <div style="display: inline-block; background-color: #eef2ff; color: #111827; font-size: 28px; font-weight: bold; letter-spacing: 6px; padding: 14px 28px; border-radius: 10px; border: 1px dashed #6366f1;">
             ${otp}
           </div>
-        </div>  
+        </div>
 
         <p style="font-size: 15px; line-height: 1.7; margin-bottom: 12px;">
           This OTP is valid for the next 5 minutes. Please do not share it with anyone for security reasons.
@@ -50,10 +54,6 @@ const sendOtpEmail = async (email, otp, type = 'login') => {
           If you did not request this, you can safely ignore this email.
         </p>
 
-        <p style="font-size: 15px; line-height: 1.7; margin-bottom: 24px;">
-          Once verified, you'll be able to access your assessment and take a step closer to discovering the right career path for you.
-        </p>
-
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
 
         <p style="font-size: 15px; margin-bottom: 4px;">
@@ -61,7 +61,7 @@ const sendOtpEmail = async (email, otp, type = 'login') => {
         </p>
 
         <p style="font-size: 15px; font-weight: 600; color: #111827; margin: 0;">
-          Team Mapp My University
+          Team ${displayName}
         </p>
       </div>
     `
@@ -74,7 +74,7 @@ const sendOtpEmail = async (email, otp, type = 'login') => {
         </div>
 
         <p style="font-size: 15px; line-height: 1.7; margin-bottom: 16px;">
-          We received a request to log in to your MapU account.
+          We received a request to log in to your ${displayName} account.
         </p>
 
         <p style="font-size: 15px; line-height: 1.7; margin-bottom: 20px;">
@@ -94,11 +94,15 @@ const sendOtpEmail = async (email, otp, type = 'login') => {
         <p style="font-size: 15px; line-height: 1.7; margin-bottom: 0;">
           If you did not request this login, please ignore this email.
         </p>
+
+        <p style="font-size: 14px; color: #111827; margin-top: 24px;">
+          Team ${displayName}
+        </p>
       </div>
     `;
 
   const mailOptions = {
-    from: `"MapU" <${process.env.SMTP_EMAIL}>`,
+    from: `"${fromName}" <${process.env.SMTP_EMAIL}>`,
     to: email,
     subject,
     html,
@@ -106,7 +110,7 @@ const sendOtpEmail = async (email, otp, type = 'login') => {
 
   try {
     await transporter.sendMail(mailOptions);
-    logger.info(`${type} OTP email sent to ${email}`);
+    logger.info(`${type} OTP email sent to ${email} (brand=${fromName})`);
   } catch (error) {
     logger.error(`Failed to send ${type} OTP email to ${email}`, error);
     throw new Error('Failed to send OTP');

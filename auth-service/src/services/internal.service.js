@@ -1,6 +1,7 @@
 const prisma = require('../prisma/prisma');
 const transporter = require('../config/mailer.config');
 const { logger } = require('../config/logger');
+const { resolveBrand, DEFAULT_BRAND } = require('../utils/brand.util');
 
 const getBasicUserDetails = async (studentId) => {
   const user = await prisma.user.findUnique({
@@ -41,7 +42,17 @@ const sendPaymentReceiptEmail = async ({
   razorpayPaymentId,
   registrationType,
   schoolName,
+  tenantSlug,
+  brand: brandOverride,
 }) => {
+  const brand =
+    brandOverride ||
+    (await resolveBrand(tenantSlug)) ||
+    DEFAULT_BRAND;
+
+  const displayName = brand.displayName || DEFAULT_BRAND.displayName;
+  const fromName = brand.fromName || DEFAULT_BRAND.fromName;
+
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background-color: #f8fafc; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden;">
       <div style="background: linear-gradient(135deg, #2563eb, #4f46e5); padding: 32px; color: white;">
@@ -50,7 +61,7 @@ const sendPaymentReceiptEmail = async ({
         </h1>
 
         <p style="margin-top: 10px; font-size: 14px; opacity: 0.9;">
-          Thank you for completing your MapU payment.
+          Thank you for completing your ${displayName} payment.
         </p>
       </div>
 
@@ -118,23 +129,25 @@ const sendPaymentReceiptEmail = async ({
 
         <div style="background-color: #ecfeff; border: 1px solid #a5f3fc; padding: 16px; border-radius: 12px; margin-bottom: 24px;">
           <p style="margin: 0; color: #155e75; font-size: 14px; line-height: 1.6;">
-            You can now log in and continue your assessment journey on MapU.
+            You can now log in and continue your assessment journey on ${displayName}.
           </p>
         </div>
 
         <p style="font-size: 14px; color: #6b7280; line-height: 1.7;">
-          If you have any questions, please contact our support team.
+          If you have any questions, please contact our support team${
+            brand.supportEmail ? ` at ${brand.supportEmail}` : ''
+          }.
         </p>
 
         <p style="font-size: 14px; color: #111827; margin-top: 24px;">
-          Team MapU
+          Team ${displayName}
         </p>
       </div>
     </div>
   `;
 
   const mailOptions = {
-    from: `"MapU" <${process.env.SMTP_EMAIL}>`,
+    from: `"${fromName}" <${process.env.SMTP_EMAIL}>`,
     to: email,
     subject: `Payment Receipt - ${receiptNumber}`,
     html,
@@ -143,7 +156,9 @@ const sendPaymentReceiptEmail = async ({
   try {
     await transporter.sendMail(mailOptions);
 
-    logger.info(`Payment receipt email sent to ${email}`);
+    logger.info(
+      `Payment receipt email sent to ${email} (brand=${fromName})`
+    );
   } catch (error) {
     logger.error(`Failed to send payment receipt email to ${email}`, error);
     throw new Error('Failed to send payment receipt email');

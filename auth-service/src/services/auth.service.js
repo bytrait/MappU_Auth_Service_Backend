@@ -22,6 +22,7 @@ const {
   createStudentPaymentRecord,
 } = require('../utils/studentPaymentClient.util');
 const { grantSignupCredits } = require('../utils/billingClient.util');
+const { resolveBrand } = require('../utils/brand.util');
 
 const {
   badRequest,
@@ -34,13 +35,14 @@ const {
  * LOGIN OTP
  * -----------------------------
  */
-const sendLoginOtpService = async (email) => {
+const sendLoginOtpService = async (email, tenantSlug) => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) throw new Error("User not found. Please register.");
 
+  const brand = await resolveBrand(tenantSlug);
   const otp = generateOtp();
   setOtp(email, otp);
-  sendOtpEmail(email, otp, 'login');
+  sendOtpEmail(email, otp, 'login', brand);
 
   logger.info(`Login OTP sent to ${email}`);
   return { email };
@@ -73,13 +75,14 @@ const verifyLoginOtpService = async (email, otp) => {
  * REGISTER OTP
  * -----------------------------
  */
-const sendRegisterOtpService = async (email) => {
+const sendRegisterOtpService = async (email, tenantSlug) => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (user) throw new Error("Email already registered. Try logging in.");
 
+  const brand = await resolveBrand(tenantSlug);
   const otp = generateOtp();
   setOtp(email, otp);
-  sendOtpEmail(email, otp, 'registration');
+  sendOtpEmail(email, otp, 'registration', brand);
 
   logger.info(`Register OTP sent to ${email}`);
   return { email };

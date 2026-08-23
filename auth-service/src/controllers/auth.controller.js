@@ -21,8 +21,9 @@ const { logger } = require('../config/logger');
 
 const sendLoginOtpController = async (req, res) => {
   try {
-    const { email } = req.body;
-    const result = await sendLoginOtpService(email);
+    const { email, tenantSlug } = req.body;
+    const slug = tenantSlug || req.headers['x-tenant-slug'];
+    const result = await sendLoginOtpService(email, slug);
 
     return res.status(200).json({
       success: true,
@@ -37,8 +38,9 @@ const sendLoginOtpController = async (req, res) => {
 
 const sendRegisterOtpController = async (req, res) => {
   try {
-    const { email } = req.body;
-    const result = await sendRegisterOtpService(email);
+    const { email, tenantSlug } = req.body;
+    const slug = tenantSlug || req.headers['x-tenant-slug'];
+    const result = await sendRegisterOtpService(email, slug);
 
     return res.status(200).json({
       success: true,
