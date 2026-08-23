@@ -118,7 +118,7 @@ const registerUserController = async (req, res, next) => {
 const logoutController = async (req, res) => {
   try {
     res.clearCookie('auth-token', {
-      ...cookieOptions,
+      ...buildCookieOptions(req),
       maxAge: 0,
     });
 
