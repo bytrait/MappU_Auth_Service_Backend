@@ -12,12 +12,29 @@ const internalRoutes = require('./routes/internal.routes');
 const app = express();
 
 /* =======================================================
-   CORS CONFIG (env-driven; falls back to empty allow-list)
+   CORS CONFIG
+   - Always allow local Vite origins in non-prod
+   - Merge with CORS_ORIGINS from env (comma-separated)
 ======================================================= */
 
-const corsOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map((origin) => origin.trim())
+const LOCAL_DEV_ORIGINS = [
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:4000',
+  'http://localhost:4000',
+];
+
+const envOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean)
   : [];
+
+const isProd = process.env.NODE_ENV === 'prod' || process.env.NODE_ENV === 'production';
+
+const corsOrigins = isProd
+  ? envOrigins
+  : [...new Set([...LOCAL_DEV_ORIGINS, ...envOrigins])];
 
 const corsOptions = {
   origin(origin, callback) {
@@ -32,8 +49,8 @@ const corsOptions = {
       }
 
       console.error(`❌ Blocked by CORS: ${origin}`);
-
-      return callback(new Error(`Origin ${origin} not allowed by CORS`));
+      // Reflect denial without throwing (avoids Express 500 on preflight)
+      return callback(null, false);
     } catch (err) {
       callback(err);
     }
